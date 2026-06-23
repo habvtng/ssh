@@ -22,6 +22,7 @@ final class PaneModel {
     var entries: [FileEntry] = []
     var status: String = ""
     var busy = false
+    var transfer: TransferProgress?   // tiến độ tải lên/tải về/copy đang chạy (nil khi rảnh)
 
     func attach(_ model: AppModel) { if app == nil { app = model } }
 
@@ -91,24 +92,49 @@ final class PaneModel {
         moveSource = nil
     }
 
+    // Cập nhật tiến độ (gọi từ background actor → nhảy về MainActor).
+    private func updateTransfer(done: Int, total: Int) {
+        transfer?.done = done
+        transfer?.total = total
+    }
+
     // --- Tải lên / tải về ---
-    // Upload: ghi dữ liệu từ máy lên thư mục đang mở của server.
+    // Upload: ghi dữ liệu từ máy lên thư mục đang mở của server, có báo tiến độ.
     func upload(name: String, data: Data) {
         let n = name.trimmingCharacters(in: .whitespaces); guard !n.isEmpty else { return }
-        perform("✓ Đã tải lên \"\(n)\" (\(formatSize(UInt64(data.count))))") { app, cfg in
-            try await app.ssh.writeFile(cfg, path: PathUtil.join(self.path, n), data: data)
+        guard let app, let id = hostId, let cfg = app.config(forHostId: id) else {
+            status = "Chọn server trước."; return
+        }
+        Task {
+            busy = true
+            transfer = TransferProgress(kind: .upload, name: n, done: 0, total: data.count)
+            status = "⏳ Đang tải lên \"\(n)\"…"
+            do {
+                try await app.ssh.upload(cfg, path: PathUtil.join(self.path, n), data: data) { done, tot in
+                    Task { @MainActor in self.updateTransfer(done: done, total: tot) }
+                }
+                status = "✓ Đã tải lên \"\(n)\" (\(formatSize(UInt64(data.count))))"
+                await load(path.isEmpty ? "." : path)
+            } catch {
+                status = "Lỗi: \(error.localizedDescription)"
+            }
+            transfer = nil; busy = false
         }
     }
 
-    // Download: lấy toàn bộ nội dung tệp về để người dùng chọn nơi lưu.
+    // Download: lấy toàn bộ nội dung tệp về để người dùng chọn nơi lưu, có báo tiến độ.
     func download(_ entry: FileEntry) async -> Data? {
         guard let app, let id = hostId, let cfg = app.config(forHostId: id) else {
             status = "Chọn server trước."; return nil
         }
-        busy = true; status = "⏳ Đang tải \"\(entry.name)\"…"
-        defer { busy = false }
+        busy = true
+        transfer = TransferProgress(kind: .download, name: entry.name, done: 0, total: Int(entry.size ?? 0))
+        status = "⏳ Đang tải \"\(entry.name)\"…"
+        defer { busy = false; transfer = nil }
         do {
-            let data = try await app.ssh.downloadAll(cfg, path: PathUtil.join(path, entry.name))
+            let data = try await app.ssh.download(cfg, path: PathUtil.join(path, entry.name)) { done, tot in
+                Task { @MainActor in self.updateTransfer(done: done, total: tot) }
+            }
             status = "✓ Đã tải \"\(entry.name)\" (\(formatSize(UInt64(data.count)))) — chọn nơi lưu."
             return data
         } catch {
@@ -141,16 +167,20 @@ final class PaneModel {
         guard let srcCfg = app.config(forHostId: ref.hostId) else { return }
         let dstDir = folder ?? path
         Task {
-            busy = true; status = "⏳ Đang copy \"\(ref.name)\"…"
+            busy = true
+            transfer = TransferProgress(kind: .copy, name: ref.name, done: 0, total: 0)
+            status = "⏳ Đang copy \"\(ref.name)\"…"
             do {
                 let r = try await app.ssh.transfer(from: srcCfg, srcPath: ref.path,
-                                                   to: dstCfg, dstDir: dstDir, name: ref.name)
+                                                   to: dstCfg, dstDir: dstDir, name: ref.name) { done, tot in
+                    Task { @MainActor in self.updateTransfer(done: done, total: tot) }
+                }
                 status = "✓ Đã copy \"\(ref.name)\" — \(r.files) file, \(formatSize(UInt64(r.bytes)))"
                 await load(path.isEmpty ? "." : path)
             } catch {
                 status = "Lỗi copy: \(error.localizedDescription)"
             }
-            busy = false
+            transfer = nil; busy = false
         }
     }
 }
@@ -273,11 +303,31 @@ struct PaneView: View {
             }
 
             Divider()
-            HStack(spacing: 8) {
-                if pane.busy { ProgressView().controlSize(.small) }
-                Text(pane.status.isEmpty ? "Sẵn sàng" : pane.status)
-                    .font(.caption2).lineLimit(2)
-                Spacer()
+            VStack(spacing: 4) {
+                if let t = pane.transfer {
+                    HStack(spacing: 6) {
+                        Text("\(t.verb) \"\(t.name)\"")
+                            .font(.caption2).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Text("\(t.percent)%")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                    }
+                    if t.total > 0 {
+                        ProgressView(value: t.fraction).progressViewStyle(.linear)
+                    } else {
+                        ProgressView().progressViewStyle(.linear)   // chưa biết tổng → chạy không xác định
+                    }
+                    Text(t.detail)
+                        .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack(spacing: 8) {
+                        if pane.busy { ProgressView().controlSize(.small) }
+                        Text(pane.status.isEmpty ? "Sẵn sàng" : pane.status)
+                            .font(.caption2).lineLimit(2)
+                        Spacer()
+                    }
+                }
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
         }

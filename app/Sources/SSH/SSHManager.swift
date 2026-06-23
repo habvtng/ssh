@@ -14,6 +14,9 @@ struct SSHFriendlyError: LocalizedError {
 actor SSHManager {
     private var clients: [UUID: SSHClient] = [:]
 
+    // Kích thước chunk khi tải lên/tải về/copy — đủ lớn để nhanh, đủ nhỏ để báo tiến độ mượt.
+    private static let chunkSize = 1 << 18  // 256 KB
+
     // Lấy (hoặc tạo) client cho một cấu hình.
     func connect(_ cfg: ConnectionConfig) async throws -> SSHClient {
         if let c = clients[cfg.id], c.isConnected { return c }
@@ -160,6 +163,26 @@ actor SSHManager {
         }
     }
 
+    // Tải dữ liệu từ máy lên server theo từng chunk, gọi onProgress(đã ghi, tổng) để báo tiến độ.
+    func upload(_ cfg: ConnectionConfig, path: String, data: Data,
+                onProgress: @escaping @Sendable (Int, Int) -> Void) async throws {
+        let client = try await connect(cfg)
+        let sftp = try await client.openSFTP()
+        defer { Task { try? await sftp.close() } }
+        let total = data.count
+        onProgress(0, total)
+        try await sftp.withFile(filePath: path, flags: [.write, .create, .truncate]) { f in
+            if total == 0 { try await f.write(ByteBuffer()); return }
+            var offset = 0
+            while offset < total {
+                let end = Swift.min(offset + Self.chunkSize, total)
+                try await f.write(ByteBuffer(bytes: data[offset..<end]), at: UInt64(offset))
+                offset = end
+                onProgress(offset, total)
+            }
+        }
+    }
+
     // Tải toàn bộ một tệp về (không giới hạn dung lượng như readFile dùng để sửa).
     func downloadAll(_ cfg: ConnectionConfig, path: String) async throws -> Data {
         let client = try await connect(cfg)
@@ -169,6 +192,31 @@ actor SSHManager {
             try await f.readAll()
         }
         return Data(buf.readBytes(length: buf.readableBytes) ?? [])
+    }
+
+    // Tải tệp về theo từng chunk, gọi onProgress(đã tải, tổng) để báo tiến độ.
+    // total = 0 nếu không lấy được kích thước trước; khi đó mẫu số được nâng dần theo số byte đã đọc.
+    func download(_ cfg: ConnectionConfig, path: String,
+                  onProgress: @escaping @Sendable (Int, Int) -> Void) async throws -> Data {
+        let client = try await connect(cfg)
+        let sftp = try await client.openSFTP()
+        defer { Task { try? await sftp.close() } }
+        let total = Int((try? await sftp.getAttributes(at: path).size) ?? 0)
+        onProgress(0, total)
+        var out = Data()
+        if total > 0 { out.reserveCapacity(total) }
+        try await sftp.withFile(filePath: path, flags: .read) { f in
+            var offset: UInt64 = 0
+            while true {
+                var buf = try await f.read(from: offset, length: UInt32(Self.chunkSize))
+                let n = buf.readableBytes
+                if n == 0 { break }
+                if let bytes = buf.readBytes(length: n) { out.append(contentsOf: bytes) }
+                offset += UInt64(n)
+                onProgress(Int(offset), Swift.max(total, Int(offset)))
+            }
+        }
+        return out
     }
 
     // --- Tạo / sửa / xóa ---
@@ -228,12 +276,31 @@ actor SSHManager {
 
     // Copy file/thư mục (đệ quy) giữa hai host. Dữ liệu đi qua thiết bị này làm cầu nối.
     func transfer(from src: ConnectionConfig, srcPath: String,
-                  to dst: ConnectionConfig, dstDir: String, name: String) async throws -> (files: Int, bytes: Int) {
+                  to dst: ConnectionConfig, dstDir: String, name: String,
+                  onProgress: @escaping @Sendable (Int, Int) -> Void) async throws -> (files: Int, bytes: Int) {
         let srcClient = try await connect(src)
         let dstClient = try await connect(dst)
         let srcSFTP = try await srcClient.openSFTP()
         let dstSFTP = try await dstClient.openSFTP()
         defer { Task { try? await srcSFTP.close(); try? await dstSFTP.close() } }
+
+        // Quét trước cây nguồn để biết tổng dung lượng (mẫu số cho tiến độ).
+        var total = 0
+        var scan = [srcPath]
+        while let sp = scan.popLast() {
+            let attrs = try await srcSFTP.getAttributes(at: sp)
+            let isDir = ((attrs.permissions ?? 0) & 0o170000) == 0o040000
+            if isDir {
+                for n in try await srcSFTP.listDirectory(atPath: sp) {
+                    for c in n.components where c.filename != "." && c.filename != ".." {
+                        scan.append(PathUtil.join(sp, c.filename))
+                    }
+                }
+            } else {
+                total += Int(attrs.size ?? 0)
+            }
+        }
+        onProgress(0, total)
 
         var files = 0, bytes = 0
         var stack: [(String, String)] = [(srcPath, PathUtil.join(dstDir, name))]
@@ -250,12 +317,20 @@ actor SSHManager {
                     }
                 }
             } else {
-                let buf = try await srcSFTP.withFile(filePath: sp, flags: .read) { f in
-                    try await f.readAll()
-                }
-                bytes += buf.readableBytes
-                try await dstSFTP.withFile(filePath: dp, flags: [.write, .create, .truncate]) { f in
-                    try await f.write(buf, at: 0)
+                // Đọc–ghi theo chunk để file lớn cũng cập nhật tiến độ từng phần.
+                try await srcSFTP.withFile(filePath: sp, flags: .read) { rf in
+                    try await dstSFTP.withFile(filePath: dp, flags: [.write, .create, .truncate]) { wf in
+                        var offset: UInt64 = 0
+                        while true {
+                            let chunk = try await rf.read(from: offset, length: UInt32(Self.chunkSize))
+                            let n = chunk.readableBytes
+                            if n == 0 { break }
+                            try await wf.write(chunk, at: offset)
+                            offset += UInt64(n)
+                            bytes += n
+                            onProgress(bytes, Swift.max(total, bytes))
+                        }
+                    }
                 }
                 files += 1
             }

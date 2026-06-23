@@ -61,6 +61,43 @@ enum PathUtil {
     }
 }
 
+// Tiến độ một lần tải lên / tải về / copy — để hiện % + thanh tiến trình + tốc độ.
+struct TransferProgress {
+    enum Kind { case upload, download, copy }
+    var kind: Kind
+    var name: String
+    var done: Int            // số byte đã xong
+    var total: Int           // tổng byte (0 nếu chưa biết)
+    var startedAt = Date()
+
+    var fraction: Double {
+        guard total > 0 else { return 0 }
+        return Swift.min(1, Double(done) / Double(total))
+    }
+    var percent: Int { Int((fraction * 100).rounded()) }
+    var verb: String {
+        switch kind {
+        case .upload: return "Đang tải lên"
+        case .download: return "Đang tải về"
+        case .copy: return "Đang copy"
+        }
+    }
+    // Tốc độ trung bình (B/s) tính từ lúc bắt đầu; 0 nếu quá sớm để ước lượng.
+    var speed: Double {
+        let dt = Date().timeIntervalSince(startedAt)
+        return dt > 0.3 ? Double(done) / dt : 0
+    }
+    // Dòng chi tiết: "12.3M / 50.0M · 8.4M/s"
+    var detail: String {
+        var parts: [String] = []
+        parts.append(total > 0
+            ? "\(formatSize(UInt64(done))) / \(formatSize(UInt64(total)))"
+            : formatSize(UInt64(done)))
+        if speed > 0 { parts.append("\(formatSize(UInt64(speed)))/s") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 func formatSize(_ n: UInt64?) -> String {
     guard let n else { return "" }
     let units = ["B", "K", "M", "G", "T"]

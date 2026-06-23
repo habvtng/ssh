@@ -242,7 +242,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 26.6.231;
+				MARKETING_VERSION = 26.6.232;
 				PRODUCT_BUNDLE_IDENTIFIER = vn.tre360.ssh;
 				PRODUCT_NAME = "Tre SSH";
 				SDKROOT = auto;
@@ -272,7 +272,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 26.6.231;
+				MARKETING_VERSION = 26.6.232;
 				PRODUCT_BUNDLE_IDENTIFIER = vn.tre360.ssh;
 				PRODUCT_NAME = "Tre SSH";
 				SDKROOT = auto;
