@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ssh-web",
+      "runtimeExecutable": "true",
+      "runtimeArgs": [],
+      "port": 8080
+    }
+  ]
+}

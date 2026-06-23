@@ -1,0 +1,47 @@
+# resolver v3 = MSRV-aware: chọn version crate phụ tương thích rust-version bên dưới,
+# tránh việc cargo kéo bản mới nhất rồi đòi Rust cao hơn base image.
+[workspace]
+resolver = "3"
+
+[package]
+name = "ssh-web"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+
+[[bin]]
+name = "ssh-web"
+path = "src/main.rs"
+
+[dependencies]
+# web framework + websocket
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# errors / serde
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+
+# storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# auth
+argon2 = "0.5"
+jsonwebtoken = "9"
+
+# crypto (AES-256-GCM) + base64
+aes-gcm = { version = "0.10", features = ["std"] }
+base64 = "0.22"
+
+# ssh bridge — ssh.rs dùng API mới (AuthResult.success(), PrivateKeyWithHashAlg,
+# best_supported_rsa_hash, keys::ssh_key) → cần russh >= 0.50; pin 0.61 (MSRV 1.85).
+russh = "0.61"
+russh-sftp = "2.3"          # SFTP client (chạy trên channel của russh)
