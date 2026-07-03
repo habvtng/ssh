@@ -34,6 +34,11 @@ targets:
         UILaunchScreen: {}
         # iOS chặn kết nối tới IP mạng LAN nếu thiếu key này (Local Network Privacy).
         NSLocalNetworkUsageDescription: "Ứng dụng cần truy cập mạng nội bộ để kết nối SSH tới máy chủ trong cùng mạng LAN."
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: vn.tre360.ssh.sftp-ref
+            UTTypeDescription: SFTP file reference
+            UTTypeConformsTo:
+              - public.data
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: vn.tre360.ssh

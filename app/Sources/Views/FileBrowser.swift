@@ -2,6 +2,11 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension UTType {
+    // UTType riêng cho kéo–thả nội bộ app (macOS List + .json Transferable hay bị nuốt drop).
+    static let sftpRef = UTType(exportedAs: "vn.tre360.ssh.sftp-ref")
+}
+
 // Dữ liệu kéo–thả: nguồn (host + đường dẫn tuyệt đối).
 struct SFTPRef: Codable, Transferable {
     var hostId: UUID
@@ -9,7 +14,34 @@ struct SFTPRef: Codable, Transferable {
     var name: String
     var isDir: Bool
     static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .json)
+        CodableRepresentation(contentType: .sftpRef)
+    }
+
+    // Pasteboard tường minh — ổn định hơn .draggable/.dropDestination trên macOS List.
+    func itemProvider() -> NSItemProvider {
+        let provider = NSItemProvider()
+        guard let data = try? JSONEncoder().encode(self) else { return provider }
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.sftpRef.identifier, visibility: .all) { completion in
+            completion(data, nil)
+            return nil
+        }
+        return provider
+    }
+
+    static func load(from providers: [NSItemProvider]) async -> [SFTPRef] {
+        var refs: [SFTPRef] = []
+        for provider in providers {
+            guard provider.hasItemConformingToTypeIdentifier(UTType.sftpRef.identifier) else { continue }
+            let data: Data? = await withCheckedContinuation { cont in
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.sftpRef.identifier) { data, _ in
+                    cont.resume(returning: data)
+                }
+            }
+            if let data, let ref = try? JSONDecoder().decode(SFTPRef.self, from: data) {
+                refs.append(ref)
+            }
+        }
+        return refs
     }
 }
 
@@ -201,6 +233,9 @@ struct PaneView: View {
     @State private var editing: FileEntry?
     @State private var showImporter = false
     @State private var exportFile: ExportFile?
+    #if os(macOS)
+    @State private var paneDropTarget = false
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -283,24 +318,11 @@ struct PaneView: View {
                 .padding(.horizontal, 10).padding(.vertical, 4)
             Divider()
 
-            List {
-                ForEach(pane.entries) { entry in
-                    row(entry)
-                }
-            }
-            .listStyle(.plain)
-            .frame(maxHeight: .infinity)
-            .overlay {
-                if pane.entries.isEmpty && pane.hostId != nil && !pane.busy {
-                    Text("(thư mục trống)").font(.caption).foregroundStyle(.secondary)
-                } else if pane.hostId == nil {
-                    Text("Chọn server").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .dropDestination(for: SFTPRef.self) { items, _ in
-                for it in items { pane.receive(it, intoFolder: nil) }
-                return !items.isEmpty
-            }
+            #if os(macOS)
+            macFileList
+            #else
+            iosFileList
+            #endif
 
             Divider()
             VStack(spacing: 4) {
@@ -369,6 +391,58 @@ struct PaneView: View {
         }
     }
 
+    #if os(macOS)
+    // macOS: List + Transferable tùy chỉnh hay không nhận drop — dùng ScrollView + onDrag/onDrop.
+    @ViewBuilder private var macFileList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(pane.entries) { entry in
+                    row(entry)
+                    Divider()
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .background(paneDropTarget ? Color.accentColor.opacity(0.08) : Color.clear)
+        .overlay { fileListPlaceholder }
+        .onDrop(of: [UTType.sftpRef], isTargeted: $paneDropTarget) { providers in
+            handleDrop(providers, intoFolder: nil)
+        }
+    }
+    #else
+    @ViewBuilder private var iosFileList: some View {
+        List {
+            ForEach(pane.entries) { entry in
+                row(entry)
+            }
+        }
+        .listStyle(.plain)
+        .frame(maxHeight: .infinity)
+        .overlay { fileListPlaceholder }
+        .dropDestination(for: SFTPRef.self) { items, _ in
+            for it in items { pane.receive(it, intoFolder: nil) }
+            return !items.isEmpty
+        }
+    }
+    #endif
+
+    @ViewBuilder private var fileListPlaceholder: some View {
+        if pane.entries.isEmpty && pane.hostId != nil && !pane.busy {
+            Text("(thư mục trống)").font(.caption).foregroundStyle(.secondary)
+        } else if pane.hostId == nil {
+            Text("Chọn server").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider], intoFolder folder: String?) -> Bool {
+        Task {
+            let items = await SFTPRef.load(from: providers)
+            guard !items.isEmpty else { return }
+            for it in items { pane.receive(it, intoFolder: folder) }
+        }
+        return true
+    }
+
     @ViewBuilder
     private func row(_ entry: FileEntry) -> some View {
         let full = PathUtil.join(pane.path, entry.name)
@@ -381,9 +455,10 @@ struct PaneView: View {
             Text(entry.isDir ? "" : formatSize(entry.size))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { if entry.isDir { pane.open(entry) } else { editing = entry } }
-        .draggable(ref)
         .contextMenu {
             if !entry.isDir {
                 Button { editing = entry } label: { Label("Sửa nội dung", systemImage: "square.and.pencil") }
@@ -393,18 +468,33 @@ struct PaneView: View {
             Button { pane.cut(entry) } label: { Label("Di chuyển (cắt)", systemImage: "scissors") }
             Button(role: .destructive) { deleting = entry } label: { Label("Xóa", systemImage: "trash") }
         }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) { deleting = entry } label: { Label("Xóa", systemImage: "trash") }
-            Button { renameText = entry.name; renaming = entry } label: { Label("Đổi tên", systemImage: "pencil") }
-                .tint(.blue)
-        }
-        .swipeActions(edge: .leading) {
-            Button { pane.cut(entry) } label: { Label("Cắt", systemImage: "scissors") }.tint(.orange)
-            if !entry.isDir {
-                Button { startDownload(entry) } label: { Label("Tải về", systemImage: "arrow.down.doc") }.tint(.green)
+
+        #if os(macOS)
+        Group {
+            if entry.isDir {
+                content
+                    .onDrop(of: [UTType.sftpRef], isTargeted: nil) { providers in
+                        handleDrop(providers, intoFolder: full)
+                    }
+            } else {
+                content
             }
         }
-
+        .onDrag { pane.hostId != nil ? ref.itemProvider() : NSItemProvider() }
+        #else
+        content
+            .draggable(ref)
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) { deleting = entry } label: { Label("Xóa", systemImage: "trash") }
+                Button { renameText = entry.name; renaming = entry } label: { Label("Đổi tên", systemImage: "pencil") }
+                    .tint(.blue)
+            }
+            .swipeActions(edge: .leading) {
+                Button { pane.cut(entry) } label: { Label("Cắt", systemImage: "scissors") }.tint(.orange)
+                if !entry.isDir {
+                    Button { startDownload(entry) } label: { Label("Tải về", systemImage: "arrow.down.doc") }.tint(.green)
+                }
+            }
         if entry.isDir {
             content.dropDestination(for: SFTPRef.self) { items, _ in
                 for it in items { pane.receive(it, intoFolder: full) }
@@ -413,6 +503,7 @@ struct PaneView: View {
         } else {
             content
         }
+        #endif
     }
 }
 
