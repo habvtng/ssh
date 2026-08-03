@@ -31,6 +31,20 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo tauri build --target x86_64-pc-windows-msvc
 
+      # In danh sách DLL mà .exe phụ thuộc. Nếu crt-static có tác dụng thì KHÔNG được
+      # thấy api-ms-win-crt-*.dll / ucrtbase.dll / vcruntime140.dll trong danh sách này.
+      - name: Kiểm tra phụ thuộc CRT
+        shell: pwsh
+        run: |
+          $exe = "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/tre-ssh-desktop.exe"
+          $dumpbin = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($dumpbin) {
+            & $dumpbin.FullName /dependents $exe
+          } else {
+            Write-Host "không tìm thấy dumpbin — soi chuỗi trong binary:"
+            Select-String -Path $exe -Pattern "api-ms-win-crt" -AllMatches -Encoding Byte | Select-Object -First 5
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: tre-ssh-windows
