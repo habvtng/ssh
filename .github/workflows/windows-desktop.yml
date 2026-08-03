@@ -27,28 +27,37 @@ jobs:
       - name: Cài Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
-      # RUSTFLAGS đặt ngay tại step này (không đặt cấp job) vì bước `cargo install tauri-cli`
-      # ở trên build cho HOST — dính crt-static là hỏng proc-macro.
-      # Kèm --target tường minh thì RUSTFLAGS chỉ áp cho artifact đích, build script chạy host bình thường.
-      - name: Build
+      # Tự gọi cargo (RUSTFLAGS chắc chắn ăn) thay vì để tauri CLI gọi hộ — đã kiểm chứng
+      # bằng dumpbin: qua `cargo tauri build`, cờ crt-static bị bỏ, binary vẫn đòi
+      # api-ms-win-crt-*.dll (Windows 8 / Server 2012 chưa cài UCRT là không mở được).
+      # RUSTFLAGS chỉ đặt ở step này, không đặt cấp job: `cargo install tauri-cli` build cho
+      # HOST, dính crt-static là hỏng proc-macro. Có --target nên build script vẫn chạy host bình thường.
+      - name: Build binary
         working-directory: desktop/src-tauri
         env:
           RUSTFLAGS: -C target-feature=+crt-static
-        run: cargo tauri build --target x86_64-pc-windows-msvc
+        run: cargo build --release --target x86_64-pc-windows-msvc
 
-      # In danh sách DLL mà .exe phụ thuộc. Nếu crt-static có tác dụng thì KHÔNG được
-      # thấy api-ms-win-crt-*.dll / ucrtbase.dll / vcruntime140.dll trong danh sách này.
+      - name: Đóng gói MSI + NSIS
+        working-directory: desktop/src-tauri
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo tauri bundle --target x86_64-pc-windows-msvc
+
+      # CỔNG CHẶN: còn phụ thuộc CRT động thì fail luôn, không đẩy file lỗi cho người dùng tải.
       - name: Kiểm tra phụ thuộc CRT
         shell: pwsh
         run: |
           $exe = "desktop/src-tauri/target/x86_64-pc-windows-msvc/release/tre-ssh-desktop.exe"
           $dumpbin = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($dumpbin) {
-            & $dumpbin.FullName /dependents $exe
-          } else {
-            Write-Host "không tìm thấy dumpbin — soi chuỗi trong binary:"
-            Select-String -Path $exe -Pattern "api-ms-win-crt" -AllMatches -Encoding Byte | Select-Object -First 5
+          if (-not $dumpbin) { Write-Error "không tìm thấy dumpbin"; exit 1 }
+          $deps = & $dumpbin.FullName /dependents $exe
+          $deps
+          if ($deps -match "api-ms-win-crt|ucrtbase\.dll|vcruntime") {
+            Write-Error "Binary vẫn link CRT động -> máy chưa cài UCRT sẽ báo thiếu api-ms-win-crt-*.dll"
+            exit 1
           }
+          Write-Host "OK: CRT đã link tĩnh."
 
       - uses: actions/upload-artifact@v4
         with:
