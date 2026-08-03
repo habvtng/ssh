@@ -60,6 +60,23 @@ Kết quả:
 
 Chạy thử lúc phát triển: `cargo tauri dev`.
 
+## WebView2 Runtime (bẫy lỗi 1722)
+
+App dùng **WebView2** để hiển thị giao diện. Windows 11 và Windows 10 bản mới có sẵn; máy nào
+thiếu thì bộ cài phải cài kèm.
+
+Mặc định của Tauri là `downloadBootstrapper` — lúc cài chạy PowerShell tải WebView2 từ
+`go.microsoft.com`. Máy nào chặn mạng/proxy/policy PowerShell sẽ dừng giữa chừng:
+
+> Error 1722 … Action DownloadAndInvokeBootstrapper … Invoke-WebRequest …
+
+Vì vậy `tauri.conf.json` đặt `bundle.windows.webviewInstallMode = offlineInstaller`: **nhúng thẳng
+WebView2 Runtime vào bộ cài** (tải lúc build trên CI), cài không cần mạng. Đổi lại bộ cài nặng thêm
+~130 MB. Máy chắc chắn đã có WebView2 thì đổi thành `{ "type": "skip" }` cho nhẹ.
+
+Bản portable `tre-ssh-desktop.exe` không cài gì cả → máy phải sẵn WebView2, thiếu thì tải
+[Evergreen Standalone Installer](https://developer.microsoft.com/microsoft-edge/webview2/) về cài tay.
+
 ## Ghi chú kỹ thuật
 
 - `backend/src/lib.rs` là phần dùng chung: `build_api_router` (REST + WebSocket, không kèm static),
