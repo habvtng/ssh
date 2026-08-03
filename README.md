@@ -3,7 +3,8 @@
 Ba cách dùng cùng một bộ tính năng SSH/SFTP:
 
 - **App native macOS + iOS** — SwiftUI, SSH chạy thẳng trên thiết bị, không cần backend. Xem [`app/`](app/).
-- **App desktop Windows** — vỏ Tauri bọc frontend + nhúng luôn backend Rust vào **một file `.exe`**. Xem [`desktop/`](desktop/).
+- **App desktop Windows (Tauri)** — vỏ Tauri bọc frontend + nhúng luôn backend Rust vào **một file `.exe`**. Cần WebView2 nên hợp với Windows 10/11. Xem [`desktop/`](desktop/).
+- **App Windows đời cũ (C# WinForms)** — 1.7 MB, chạy bằng .NET Framework 4.5 có sẵn trong Windows 8/Server 2012, không WebView2. Xem [`winapp/`](winapp/).
 - **Web SSH client** — chạy trên trình duyệt, backend Rust làm cầu nối. Xem phần dưới.
 
 ---

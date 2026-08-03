@@ -3,3 +3,5 @@
 /desktop/src-tauri/target
 /desktop/src-tauri/gen
 /backend/target
+/winapp/bin
+/winapp/obj

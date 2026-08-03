@@ -1,0 +1,51 @@
+# Build app WinForms (C#, .NET Framework 4.5) — bản dành cho Windows đời cũ:
+# không WebView2, không UCRT, không cần cài runtime (Windows 8 / Server 2012 có sẵn .NET 4.5).
+# Kết quả: MỘT file TreSSH.exe (DLL phụ thuộc nhúng sẵn bên trong).
+name: Windows C#
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build
+        run: dotnet build winapp/TreSSH.Win.csproj -c Release
+
+      # Kiểm chứng .exe tự đứng một mình: nạp được DLL nhúng, không cần file kèm.
+      - name: Tự kiểm tra
+        shell: pwsh
+        run: |
+          $exe = "winapp/bin/Release/net45/TreSSH.exe"
+          $asm = [Reflection.Assembly]::LoadFrom((Resolve-Path $exe))
+          $res = $asm.GetManifestResourceNames()
+          $res
+          foreach ($need in @("dep.Renci.SshNet.dll", "dep.Newtonsoft.Json.dll")) {
+            if ($res -notcontains $need) { Write-Error "thiếu resource $need trong .exe"; exit 1 }
+          }
+          # Chạy thật ở chế độ selftest (runner có .NET Framework 4.8 nên chạy được net45).
+          Copy-Item $exe "$env:TEMP\TreSSH.exe"     # copy đi chỗ khác để chắc chắn không mượn DLL cạnh file
+          $p = Start-Process "$env:TEMP\TreSSH.exe" -ArgumentList "--selftest" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { Write-Error "selftest fail (exit $($p.ExitCode))"; exit 1 }
+          Write-Host "OK: .exe chạy độc lập, nạp được SSH.NET + Newtonsoft.Json."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tre-ssh-winforms
+          path: winapp/bin/Release/net45/TreSSH.exe
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: winapp/bin/Release/net45/TreSSH.exe
