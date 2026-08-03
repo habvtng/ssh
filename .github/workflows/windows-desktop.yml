@@ -29,15 +29,15 @@ jobs:
 
       - name: Build
         working-directory: desktop/src-tauri
-        run: cargo tauri build
+        run: cargo tauri build --target x86_64-pc-windows-msvc
 
       - uses: actions/upload-artifact@v4
         with:
           name: tre-ssh-windows
           path: |
-            desktop/src-tauri/target/release/tre-ssh-desktop.exe
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/tre-ssh-desktop.exe
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
 
       # Đẩy lên Releases khi push tag v*
@@ -46,5 +46,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe

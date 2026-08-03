@@ -1,0 +1,7 @@
+# Link TĨNH Universal CRT vào .exe. Không có dòng này, binary MSVC đòi
+# api-ms-win-crt-*.dll / vcruntime140.dll — Windows 8 / Server 2012 chưa cài
+# UCRT (KB2999226) sẽ báo "The program can't start because ... .dll is missing".
+# Chỉ có tác dụng khi build kèm `--target x86_64-pc-windows-msvc` (để build script
+# và proc-macro chạy trên host vẫn dùng CRT động, tránh lỗi biên dịch).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
