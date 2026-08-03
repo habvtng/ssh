@@ -274,6 +274,106 @@ actor SSHManager {
         for d in dirs.reversed() { try await sftp.rmdir(at: d) }
     }
 
+    // --- Máy này ⟷ server ---
+
+    // Tải tệp/thư mục (đệ quy) từ máy này lên server, đọc-ghi theo chunk để báo tiến độ.
+    func uploadTree(_ cfg: ConnectionConfig, localPath: String, dstDir: String, name: String,
+                    onProgress: @escaping @Sendable (Int, Int) -> Void) async throws -> (files: Int, bytes: Int) {
+        let client = try await connect(cfg)
+        let sftp = try await client.openSFTP()
+        defer { Task { try? await sftp.close() } }
+        let fm = FileManager.default
+
+        let total = LocalFS.totalSize(of: localPath)
+        onProgress(0, total)
+
+        var files = 0, bytes = 0
+        var stack: [(String, String)] = [(localPath, PathUtil.join(dstDir, name))]
+        while let (lp, rp) = stack.popLast() {
+            if LocalFS.isDir(lp) {
+                _ = try? await sftp.createDirectory(atPath: rp)
+                for n in try fm.contentsOfDirectory(atPath: lp) {
+                    stack.append((PathUtil.join(lp, n), PathUtil.join(rp, n)))
+                }
+            } else {
+                let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: lp))
+                defer { try? handle.close() }
+                try await sftp.withFile(filePath: rp, flags: [.write, .create, .truncate]) { f in
+                    var offset: UInt64 = 0
+                    while let chunk = try handle.read(upToCount: Self.chunkSize), !chunk.isEmpty {
+                        try await f.write(ByteBuffer(bytes: Array(chunk)), at: offset)
+                        offset += UInt64(chunk.count)
+                        bytes += chunk.count
+                        onProgress(bytes, Swift.max(total, bytes))
+                    }
+                    if offset == 0 { try await f.write(ByteBuffer()) }   // tệp rỗng
+                }
+                files += 1
+            }
+        }
+        return (files, bytes)
+    }
+
+    // Tải tệp/thư mục (đệ quy) từ server về một thư mục trên máy này.
+    func downloadTree(_ cfg: ConnectionConfig, srcPath: String, dstDir: String, name: String,
+                      onProgress: @escaping @Sendable (Int, Int) -> Void) async throws -> (files: Int, bytes: Int) {
+        let client = try await connect(cfg)
+        let sftp = try await client.openSFTP()
+        defer { Task { try? await sftp.close() } }
+        let fm = FileManager.default
+
+        // Quét trước cây nguồn để biết tổng dung lượng.
+        var total = 0
+        var scan = [srcPath]
+        while let sp = scan.popLast() {
+            let attrs = try await sftp.getAttributes(at: sp)
+            if ((attrs.permissions ?? 0) & 0o170000) == 0o040000 {
+                for n in try await sftp.listDirectory(atPath: sp) {
+                    for c in n.components where c.filename != "." && c.filename != ".." {
+                        scan.append(PathUtil.join(sp, c.filename))
+                    }
+                }
+            } else {
+                total += Int(attrs.size ?? 0)
+            }
+        }
+        onProgress(0, total)
+
+        var files = 0, bytes = 0
+        var stack: [(String, String)] = [(srcPath, PathUtil.join(dstDir, name))]
+        while let (sp, lp) = stack.popLast() {
+            let attrs = try await sftp.getAttributes(at: sp)
+            if ((attrs.permissions ?? 0) & 0o170000) == 0o040000 {
+                try? fm.createDirectory(atPath: lp, withIntermediateDirectories: true)
+                for n in try await sftp.listDirectory(atPath: sp) {
+                    for c in n.components where c.filename != "." && c.filename != ".." {
+                        stack.append((PathUtil.join(sp, c.filename), PathUtil.join(lp, c.filename)))
+                    }
+                }
+            } else {
+                guard fm.createFile(atPath: lp, contents: nil) else {
+                    throw SSHFriendlyError(message: "Không ghi được vào \"\(lp)\" — chọn lại thư mục trên máy để cấp quyền.")
+                }
+                let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: lp))
+                defer { try? handle.close() }
+                try await sftp.withFile(filePath: sp, flags: .read) { rf in
+                    var offset: UInt64 = 0
+                    while true {
+                        var chunk = try await rf.read(from: offset, length: UInt32(Self.chunkSize))
+                        let n = chunk.readableBytes
+                        if n == 0 { break }
+                        if let raw = chunk.readBytes(length: n) { try handle.write(contentsOf: Data(raw)) }
+                        offset += UInt64(n)
+                        bytes += n
+                        onProgress(bytes, Swift.max(total, bytes))
+                    }
+                }
+                files += 1
+            }
+        }
+        return (files, bytes)
+    }
+
     // Copy file/thư mục (đệ quy) giữa hai host. Dữ liệu đi qua thiết bị này làm cầu nối.
     func transfer(from src: ConnectionConfig, srcPath: String,
                   to dst: ConnectionConfig, dstDir: String, name: String,

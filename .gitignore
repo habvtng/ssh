@@ -1,2 +1,5 @@
 /app/.build
 /app/dist
+/desktop/src-tauri/target
+/desktop/src-tauri/gen
+/backend/target

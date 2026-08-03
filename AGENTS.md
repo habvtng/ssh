@@ -26,7 +26,8 @@ ssh/
 ├─ backend/
 │  ├─ Cargo.toml          # deps + resolver v3 + rust-version 1.88
 │  └─ src/
-│     ├─ main.rs          # routes + server + AppState
+│     ├─ lib.rs           # AppState + routes + serve() — DÙNG CHUNG cho bin và app desktop
+│     ├─ main.rs          # bin ssh-web: đọc ENV (BIND/DB_PATH/STATIC_DIR) rồi gọi lib::serve
 │     ├─ api.rs           # REST handlers (auth/hosts/keys/snippets/tunnels)
 │     ├─ ssh.rs           # WebSocket ⟷ SSH bridge (russh PTY) + connect_session dùng chung
 │     ├─ sftp.rs          # SFTP browser: /api/sftp/list + /api/sftp/read (russh-sftp)
@@ -36,6 +37,10 @@ ssh/
 │     └─ tunnel.rs        # port-forward manager (KHUNG — chưa nối runtime)
 ├─ frontend/
 │  └─ index.html          # SPA: xterm.js + UI quản lý
+├─ desktop/src-tauri/     # app desktop Windows (Tauri v2) — nhúng frontend + lib ssh-web vào 1 .exe
+│  ├─ src/main.rs         # bind 127.0.0.1:0 → mở WebviewWindow trỏ vào port đó
+│  └─ tauri.conf.json     # bundle targets: nsis + msi
+├─ app/                   # app native macOS/iOS (SwiftUI) — không liên quan backend Rust
 ├─ Dockerfile             # multi-stage: rust:1.88-slim-bookworm build → debian:bookworm-slim
 ├─ docker-compose.yml     # service ssh-web, cổng 8080, volume ./data
 ├─ .env                   # MASTER_KEY + JWT_SECRET (KHÔNG commit)
@@ -60,6 +65,7 @@ Mỗi file module cung cấp đúng hợp đồng API mà `api.rs`/`ssh.rs`/`mai
 | `auth.rs` | `hash_pw(&str)->Result<String,String>`; `verify_pw(&str,&str)->bool`; `make_token/verify_token`; extractor `AuthUser(pub String)` đọc `Authorization: Bearer`. argon2 + jsonwebtoken. |
 | `sftp.rs` | `list` (duyệt thư mục, canonicalize, dirs-first) + `read` (xem file ≤1MB, text/base64). Dùng `ssh::load_host` + `ssh::connect_session` rồi mở subsystem `sftp` qua russh-sftp 2.3. |
 | `tunnel.rs` | Khung port-forward — `start()` mới là TODO, chưa bind listener. |
+| `lib.rs` | `AppState`; `build_api_router(state)` (REST + WS, không static); `build_router(state,&Path)` (thêm ServeDir); `build_state_parts(&Path,[u8;32],String)`; `bind_router(&str,Router)->(SocketAddr,fut)`; `serve(ServerConfig)`. **App desktop Tauri gọi thẳng các hàm này** — thêm route mới thì thêm trong `build_api_router` để cả 2 bản cùng có. |
 
 > **Persistence:** DB ghi vào `data/data.sqlite` (mặc định, đổi bằng `DB_PATH`) — nằm trong
 > volume `/app/data` nên **không mất khi rebuild**. Đừng đổi về `data.sqlite` trần (ghi vào

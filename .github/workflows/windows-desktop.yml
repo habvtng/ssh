@@ -1,0 +1,50 @@
+# Build app desktop Windows (Tauri) — chạy trên runner windows-latest vì Tauri
+# KHÔNG cross-compile từ macOS/Linux sang Windows được (cần MSVC + WebView2 SDK).
+# Kết quả: Tre SSH.exe (chạy trực tiếp) + bộ cài .msi và NSIS -setup.exe.
+name: Windows desktop
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # bấm tay trong tab Actions
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      # Icon .ico/.png trong repo sinh sẵn từ macOS; sinh lại bằng tauri icon cho chắc.
+      - name: Sinh icon
+        run: npx --yes @tauri-apps/cli@^2 icon app/Assets.xcassets/AppIcon.appiconset/mac-1024.png --output desktop/src-tauri/icons
+
+      - name: Cài Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build
+        working-directory: desktop/src-tauri
+        run: cargo tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tre-ssh-windows
+          path: |
+            desktop/src-tauri/target/release/Tre SSH.exe
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
+      # Đẩy lên Releases khi push tag v*
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/nsis/*-setup.exe

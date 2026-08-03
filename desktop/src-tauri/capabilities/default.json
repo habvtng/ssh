@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Quyền mặc định cho cửa sổ chính (trang chạy từ server nội bộ, không dùng IPC).",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

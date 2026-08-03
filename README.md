@@ -1,8 +1,9 @@
 # Tre SSH
 
-Hai cách dùng cùng một bộ tính năng SSH/SFTP:
+Ba cách dùng cùng một bộ tính năng SSH/SFTP:
 
-- **App native macOS + iOS** — SSH chạy thẳng trên thiết bị, không cần backend. Xem [`app/`](app/).
+- **App native macOS + iOS** — SwiftUI, SSH chạy thẳng trên thiết bị, không cần backend. Xem [`app/`](app/).
+- **App desktop Windows** — vỏ Tauri bọc frontend + nhúng luôn backend Rust vào **một file `.exe`**. Xem [`desktop/`](desktop/).
 - **Web SSH client** — chạy trên trình duyệt, backend Rust làm cầu nối. Xem phần dưới.
 
 ---
@@ -45,6 +46,27 @@ xcodebuild -project Tre360SSH.xcodeproj -scheme Tre360SSH \
 > Lần đầu trên máy mới có thể cần: `xcodebuild -downloadComponent MetalToolchain` (SwiftTerm dùng shader Metal) và `xcodebuild -downloadPlatform iOS` (SDK/simulator iOS).
 
 Chi tiết: [`app/README.md`](app/README.md).
+
+---
+
+# App desktop Windows (Tauri)
+
+App SwiftUI ở trên chỉ chạy được trên Apple. Bản Windows là app **Tauri** ở [`desktop/`](desktop/):
+cửa sổ WebView2 hiển thị đúng frontend của bản web, còn backend axum (crate `ssh-web`) chạy nhúng
+ngay trong tiến trình app ở `127.0.0.1` với port trống ngẫu nhiên → **một file `.exe`**, không Docker,
+không mở trình duyệt. Dữ liệu nằm ở `%APPDATA%\vn.tre360.ssh.desktop\`.
+
+Tauri không cross-compile sang Windows từ macOS, nên build bằng **GitHub Actions**
+([`.github/workflows/windows-desktop.yml`](.github/workflows/windows-desktop.yml): Actions → *Windows
+desktop* → Run workflow, hoặc push tag `v*` để ra Releases), hoặc chạy trên máy Windows:
+
+```powershell
+cargo install tauri-cli --version "^2" --locked
+cd desktop\src-tauri
+cargo tauri build      # → Tre SSH.exe + bundle\msi\*.msi + bundle\nsis\*-setup.exe
+```
+
+Chi tiết: [`desktop/README.md`](desktop/README.md).
 
 ---
 

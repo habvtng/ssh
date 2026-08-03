@@ -1,0 +1,33 @@
+# App desktop (Windows/macOS) — vỏ Tauri bọc frontend + nhúng thẳng backend axum
+# của `backend/` (crate ssh-web) vào cùng tiến trình, nên chỉ có MỘT file .exe, không cần Docker.
+[package]
+name = "tre-ssh-desktop"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Tre SSH — SSH/SFTP client desktop"
+authors = ["tre360.vn"]
+
+# Crate độc lập, không thuộc workspace của backend.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+ssh-web = { path = "../../backend" }
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+anyhow = "1"
+base64 = "0.22"
+rand = "0.8"
+include_dir = "0.7"
+mime_guess = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

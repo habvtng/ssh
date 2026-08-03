@@ -13,6 +13,7 @@
 		1FE1140FB840170B525AEAB4 /* DockerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 128FB8EDDF97C11DEB9BDF67 /* DockerView.swift */; };
 		2851C4A32B7A23CD39C915CD /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81F1EC4EFCE612410BACCF90 /* RootView.swift */; };
 		4A95AAFEEA6F5D637B275339 /* MetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAB1D30C58618DB7E264F5AE /* MetricsView.swift */; };
+		5D469E23C6AE095420A4A868 /* LocalFS.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65F51F1600C65BE8886B36B /* LocalFS.swift */; };
 		5D5F5AFDA9BB9AD816FC4E23 /* HostDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B2950A78B41A39210A83BD6 /* HostDetailView.swift */; };
 		6AFC065F513915DA719F65E1 /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = F1B65940BA19C8FC13D4AB53 /* Citadel */; };
 		6D2999B54500F6DA155E856C /* KeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774FCD92F4D6C80879098B44 /* KeysView.swift */; };
@@ -37,8 +38,9 @@
 		696146EBEC757F77A454133F /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
 		774FCD92F4D6C80879098B44 /* KeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeysView.swift; sourceTree = "<group>"; };
 		81F1EC4EFCE612410BACCF90 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A65F51F1600C65BE8886B36B /* LocalFS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFS.swift; sourceTree = "<group>"; };
 		CAB1D30C58618DB7E264F5AE /* MetricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsView.swift; sourceTree = "<group>"; };
-		CD33732334EF7696F86E7593 /* Tre360SSH.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; name = Tre360SSH.app; path = "Tre SSH.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD33732334EF7696F86E7593 /* Tre360SSH.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tre360SSH.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5351F05E689A4CB87C031D4 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		F4DF2859DA3DF1D1DC9A622A /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		F8DD664ED6DA86293295911C /* SSHManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHManager.swift; sourceTree = "<group>"; };
@@ -63,6 +65,7 @@
 			children = (
 				17AAE591CAB263E42951972C /* AppModel.swift */,
 				F4DF2859DA3DF1D1DC9A622A /* Keychain.swift */,
+				A65F51F1600C65BE8886B36B /* LocalFS.swift */,
 				D5351F05E689A4CB87C031D4 /* Models.swift */,
 			);
 			path = Models;
@@ -214,6 +217,7 @@
 				B7574D2FC46143385C28E52A /* HostEditView.swift in Sources */,
 				899ECCDC92AFF54FA0E28C4C /* Keychain.swift in Sources */,
 				6D2999B54500F6DA155E856C /* KeysView.swift in Sources */,
+				5D469E23C6AE095420A4A868 /* LocalFS.swift in Sources */,
 				4A95AAFEEA6F5D637B275339 /* MetricsView.swift in Sources */,
 				140EBFB72BC3463139A88188 /* Models.swift in Sources */,
 				2851C4A32B7A23CD39C915CD /* RootView.swift in Sources */,

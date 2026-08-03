@@ -35,7 +35,7 @@ struct SingleBrowser: View {
     @State private var pane = PaneModel()
 
     var body: some View {
-        PaneView(pane: pane)
+        PaneView(pane: pane, allowLocal: false)
             .onAppear {
                 pane.attach(model)
                 if pane.hostId == nil { pane.selectHost(host.id) }
