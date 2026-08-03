@@ -35,7 +35,7 @@ jobs:
         with:
           name: tre-ssh-windows
           path: |
-            desktop/src-tauri/target/release/Tre SSH.exe
+            desktop/src-tauri/target/release/tre-ssh-desktop.exe
             desktop/src-tauri/target/release/bundle/msi/*.msi
             desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error

@@ -54,7 +54,7 @@ Kết quả:
 
 | File | Dùng để |
 |---|---|
-| `target\release\Tre SSH.exe` | chạy thẳng, không cần cài |
+| `target\release\tre-ssh-desktop.exe` | bản portable, chạy thẳng không cần cài (bộ cài mới đổi tên thành `Tre SSH.exe`) |
 | `target\release\bundle\msi\*.msi` | bộ cài MSI |
 | `target\release\bundle\nsis\*-setup.exe` | bộ cài NSIS (cài cho user hiện tại, không cần quyền admin) |
 
