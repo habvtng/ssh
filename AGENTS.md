@@ -31,6 +31,7 @@ ssh/
 │     ├─ api.rs           # REST handlers (auth/hosts/keys/snippets/tunnels)
 │     ├─ ssh.rs           # WebSocket ⟷ SSH bridge (russh PTY) + connect_session dùng chung
 │     ├─ sftp.rs          # SFTP browser: /api/sftp/list + /api/sftp/read (russh-sftp)
+│     ├─ localfs.rs       # /api/local/* — duyệt file MÁY CHẠY BACKEND (chỉ bật ở app desktop)
 │     ├─ db.rs            # schema sqlite + now()
 │     ├─ crypto.rs        # AES-256-GCM + master key
 │     ├─ auth.rs          # JWT + argon2 + AuthUser extractor
@@ -65,6 +66,7 @@ Mỗi file module cung cấp đúng hợp đồng API mà `api.rs`/`ssh.rs`/`mai
 | `auth.rs` | `hash_pw(&str)->Result<String,String>`; `verify_pw(&str,&str)->bool`; `make_token/verify_token`; extractor `AuthUser(pub String)` đọc `Authorization: Bearer`. argon2 + jsonwebtoken. |
 | `sftp.rs` | `list` (duyệt thư mục, canonicalize, dirs-first) + `read` (xem file ≤1MB, text/base64). Dùng `ssh::load_host` + `ssh::connect_session` rồi mở subsystem `sftp` qua russh-sftp 2.3. |
 | `tunnel.rs` | Khung port-forward — `start()` mới là TODO, chưa bind listener. |
+| `localfs.rs` | `/api/local/{list,mkdir,rename,delete,copy,upload,download}` + `/api/capabilities`. Chỉ mount khi `ServerConfig.local_fs` bật (app desktop = true, bin `ssh-web` = ENV `LOCAL_FS=1`, **mặc định tắt**). ⚠ Bật ở bản web hosted = client duyệt được ổ đĩa máy chủ. |
 | `lib.rs` | `AppState`; `build_api_router(state)` (REST + WS, không static); `build_router(state,&Path)` (thêm ServeDir); `build_state_parts(&Path,[u8;32],String)`; `bind_router(&str,Router)->(SocketAddr,fut)`; `serve(ServerConfig)`. **App desktop Tauri gọi thẳng các hàm này** — thêm route mới thì thêm trong `build_api_router` để cả 2 bản cùng có. |
 
 > **Persistence:** DB ghi vào `data/data.sqlite` (mặc định, đổi bằng `DB_PATH`) — nằm trong

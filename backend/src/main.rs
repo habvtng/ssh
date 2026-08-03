@@ -26,6 +26,9 @@ async fn main() -> anyhow::Result<()> {
             .into(),
         master_key,
         jwt_secret,
+        // ⚠ Bản web hosted phải để TẮT: bật là client duyệt được ổ đĩa của máy chủ.
+        // Chỉ bật khi tự chạy trên máy mình (LOCAL_FS=1), còn app desktop luôn bật.
+        local_fs: std::env::var("LOCAL_FS").map(|v| v == "1").unwrap_or(false),
     })
     .await
 }

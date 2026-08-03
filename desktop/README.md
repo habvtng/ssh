@@ -14,6 +14,17 @@ Không cần Docker, không cần cài Rust, không phải mở trình duyệt. 
 > App native **Tre SSH (macOS/iOS)** trong `app/` là SwiftUI nên **không** build cho Windows được —
 > bản Windows là app Tauri này, dùng chung backend Rust với bản web.
 
+## Nguồn "💻 Máy này" ở màn 2 Server
+
+Vì backend chạy ngay trên máy người dùng, app desktop bật `local_fs` → màn **2 Server** có thêm
+nguồn **💻 Máy này** bên cạnh danh sách server: duyệt ổ đĩa máy mình, kéo–thả để upload
+file/thư mục (đệ quy) lên server, tải về, hoặc copy trong máy. Đi lên quá gốc ổ đĩa thì hiện
+danh sách ổ đĩa (`C:\`, `D:\`…).
+
+Bản web hosted **không** có nguồn này (frontend đọc `/api/capabilities` để ẩn đi), vì ở đó
+"máy này" là máy chủ — bật lên là lộ ổ đĩa server. Muốn bật khi tự chạy backend trên máy mình:
+`LOCAL_FS=1`.
+
 ## Dữ liệu người dùng
 
 | Thứ | Đường dẫn Windows |

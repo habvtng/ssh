@@ -13,6 +13,15 @@ fn err(c: StatusCode, m: impl ToString) -> (StatusCode, String) {
 
 // Mở 1 phiên SFTP tới host. Giữ luôn `Handle` (session) để kết nối SSH không bị đóng
 // khi đang dùng channel — caller phải bind nó tới hết vòng đời sftp.
+// Dùng lại ở localfs.rs (copy máy này ⟷ server).
+pub(crate) async fn open_sftp_for(
+    s: &AppState,
+    uid: &str,
+    host_id: &str,
+) -> anyhow::Result<(russh::client::Handle<ssh::Handler>, SftpSession)> {
+    open_sftp(s, uid, host_id).await
+}
+
 async fn open_sftp(
     s: &AppState,
     uid: &str,

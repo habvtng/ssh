@@ -6,6 +6,7 @@ pub mod api;
 pub mod auth;
 pub mod crypto;
 pub mod db;
+pub mod localfs;
 pub mod sftp;
 pub mod ssh;
 pub mod tunnel;
@@ -33,11 +34,36 @@ pub struct ServerConfig {
     pub static_dir: PathBuf,   // thư mục frontend (index.html + vendor/)
     pub master_key: [u8; 32],
     pub jwt_secret: String,
+    /// Cho duyệt/copy file trên máy chạy backend. Bật ở app desktop, TẮT ở bản web hosted.
+    pub local_fs: bool,
 }
 
 /// Router phần động: REST `/api/*` + WebSocket `/ws/ssh/:id` (chưa có static).
 /// App desktop dùng cái này rồi tự gắn frontend nhúng sẵn trong binary.
-pub fn build_api_router(state: AppState) -> Router {
+///
+/// `local_fs` = cho phép duyệt/copy file trên chính máy chạy backend. Chỉ bật ở app desktop;
+/// bản web hosted bật là client duyệt được ổ đĩa máy chủ.
+pub fn build_api_router(state: AppState, local_fs: bool) -> Router {
+    // Frontend hỏi cờ này để hiện (hay giấu) nguồn "💻 Máy này" ở màn 2 Server.
+    let caps = Router::new().route(
+        "/capabilities",
+        get(move || async move { axum::Json(serde_json::json!({ "local_fs": local_fs })) }),
+    );
+
+    let local_routes = if local_fs {
+        Router::new()
+            .route("/local/list", post(localfs::list))
+            .route("/local/mkdir", post(localfs::mkdir))
+            .route("/local/rename", post(localfs::rename))
+            .route("/local/delete", post(localfs::delete))
+            .route("/local/copy", post(localfs::copy))
+            .route("/local/upload", post(localfs::upload))
+            .route("/local/download", post(localfs::download))
+            .with_state(state.clone())
+    } else {
+        Router::new()
+    };
+
     let api_routes = Router::new()
         // auth
         .route("/auth/login", post(api::login))
@@ -58,7 +84,10 @@ pub fn build_api_router(state: AppState) -> Router {
         .route("/sftp/list", post(sftp::list))
         .route("/sftp/read", post(sftp::read))
         .route("/sftp/transfer", post(sftp::transfer))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        // máy này ⟷ server (chỉ có khi local_fs bật) + cờ capabilities cho frontend
+        .merge(local_routes)
+        .merge(caps);
 
     Router::new()
         .nest("/api", api_routes)
@@ -69,8 +98,8 @@ pub fn build_api_router(state: AppState) -> Router {
 }
 
 /// Router đầy đủ: API + frontend đọc từ thư mục trên đĩa (bản server/Docker).
-pub fn build_router(state: AppState, static_dir: &Path) -> Router {
-    build_api_router(state).nest_service("/", ServeDir::new(static_dir))
+pub fn build_router(state: AppState, static_dir: &Path, local_fs: bool) -> Router {
+    build_api_router(state, local_fs).nest_service("/", ServeDir::new(static_dir))
 }
 
 /// Mở DB + dựng state.
@@ -107,7 +136,7 @@ pub async fn bind(
     cfg: ServerConfig,
 ) -> anyhow::Result<(SocketAddr, impl std::future::Future<Output = std::io::Result<()>>)> {
     let state = build_state(&cfg)?;
-    let app = build_router(state, &cfg.static_dir);
+    let app = build_router(state, &cfg.static_dir, cfg.local_fs);
     bind_router(&cfg.bind, app).await
 }
 

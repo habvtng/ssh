@@ -195,7 +195,7 @@
 const API = '/api';
 let token = localStorage.getItem('token') || '';
 let tab = 'hosts';
-let cache = { hosts:[], keys:[], snippets:[], tunnels:[] };
+let cache = { hosts:[], keys:[], snippets:[], tunnels:[], caps:{} };
 let sessions = {};        // id -> {term, fit, ws, el}
 let active = null;
 
@@ -237,6 +237,7 @@ async function loadAll(){
     http('GET','/keys').then(d=>cache.keys=d).catch(()=>{}),
     http('GET','/snippets').then(d=>cache.snippets=d).catch(()=>{}),
     http('GET','/tunnels').then(d=>cache.tunnels=d).catch(()=>{}),
+    http('GET','/capabilities').then(d=>cache.caps=d).catch(()=>{cache.caps={}}),
   ]);
   render(); renderSnips();
 }
@@ -414,16 +415,17 @@ async function viewFile(hostId, path, name){
 
 // ---- Dual pane: 2 server cạnh nhau, kéo thả copy ----
 function openDual(){
-  if(!cache.hosts.length){ alert('Chưa có host nào. Thêm host ở tab Hosts trước.'); return; }
+  if(!cache.hosts.length && !cache.caps?.local_fs){ alert('Chưa có host nào. Thêm host ở tab Hosts trước.'); return; }
   document.getElementById('emptyState').style.display='none';
   const id='dual-'+Date.now();
   const el=document.createElement('div'); el.className='term dual on'; el.id='t-'+id;
   el.innerHTML=`<div class="dual-wrap">
       ${dualPaneHTML('A')}${dualPaneHTML('B')}
     </div>
-    <div class="dual-status">Chọn server cho mỗi khung rồi kéo file/thư mục từ khung này sang khung kia để copy.</div>`;
+    <div class="dual-status">Chọn nguồn cho mỗi khung rồi kéo file/thư mục từ khung này sang khung kia để copy.</div>`;
   document.getElementById('terms').appendChild(el);
-  sessions[id]={el,label:'2 Server',dual:true,state:{A:{hostId:null,path:'.'},B:{hostId:null,path:'.'}}};
+  sessions[id]={el,label:'2 Server',dual:true,
+    state:{A:{kind:null,hostId:null,path:'.'},B:{kind:null,hostId:null,path:'.'}}};
   addSessTab(id,'⇄ 2 Server');
   activate(id);
   initDual(id);
@@ -437,25 +439,29 @@ function dualPaneHTML(side){
       <button data-reload title="Tải lại">⟳</button>
     </div>
     <div class="pane-path">—</div>
-    <div class="pane-list"><div class="sftp-msg">Chọn server…</div></div>
+    <div class="pane-list"><div class="sftp-msg">Chọn nguồn…</div></div>
   </div>`;
 }
 
 function initDual(id){
   const s=sessions[id], el=s.el;
-  const opts='<option value="">— chọn server —</option>'+
+  const opts='<option value="">— chọn nguồn —</option>'+
+    (cache.caps?.local_fs?'<option value="@local">💻 Máy này</option>':'')+
     cache.hosts.map(h=>`<option value="${h.id}">${esc(h.label)}</option>`).join('');
   ['A','B'].forEach(side=>{
     const pane=el.querySelector('.pane[data-side="'+side+'"]');
     const sel=pane.querySelector('.pane-host'); sel.innerHTML=opts;
     sel.onchange=()=>{
-      s.state[side].hostId=sel.value||null; s.state[side].path='.';
-      if(sel.value) loadPane(id,side,'.');
-      else { pane.querySelector('.pane-list').innerHTML='<div class="sftp-msg">Chọn server…</div>';
+      const st=s.state[side];
+      st.kind = sel.value==='@local' ? 'local' : (sel.value ? 'host' : null);
+      st.hostId = st.kind==='host' ? sel.value : null;
+      st.path='.';
+      if(st.kind) loadPane(id,side,'.');
+      else { pane.querySelector('.pane-list').innerHTML='<div class="sftp-msg">Chọn nguồn…</div>';
              pane.querySelector('.pane-path').textContent='—'; }
     };
-    pane.querySelector('[data-up]').onclick=()=>{ if(s.state[side].hostId) loadPane(id,side,joinPath(s.state[side].path,'..')); };
-    pane.querySelector('[data-reload]').onclick=()=>{ if(s.state[side].hostId) loadPane(id,side,s.state[side].path); };
+    pane.querySelector('[data-up]').onclick=()=>{ if(s.state[side].kind) loadPane(id,side,joinPath(s.state[side].path,'..')); };
+    pane.querySelector('[data-reload]').onclick=()=>{ if(s.state[side].kind) loadPane(id,side,s.state[side].path); };
     // Khung là vùng thả: copy vào thư mục đang mở.
     const list=pane.querySelector('.pane-list');
     list.addEventListener('dragover',e=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; list.classList.add('drop'); });
@@ -470,8 +476,11 @@ async function loadPane(id, side, path){
   const list=pane.querySelector('.pane-list');
   list.innerHTML='<div class="sftp-msg">đang tải…</div>';
   try{
-    const d=await http('POST','/sftp/list',{host_id:s.state[side].hostId, path});
-    s.state[side].path=d.path;
+    const st=s.state[side];
+    const d = st.kind==='local'
+      ? await http('POST','/local/list',{path})
+      : await http('POST','/sftp/list',{host_id:st.hostId, path});
+    st.path=d.path;
     pane.querySelector('.pane-path').textContent=d.path;
     renderPane(id, side, d.entries);
   }catch(e){ list.innerHTML='<div class="sftp-msg">Lỗi: '+esc(e.message)+'</div>'; }
@@ -482,14 +491,16 @@ function renderPane(id, side, entries){
   const pane=s.el.querySelector('.pane[data-side="'+side+'"]');
   const list=pane.querySelector('.pane-list'); list.innerHTML='';
   if(!entries.length){ list.innerHTML='<div class="sftp-msg">(thư mục trống)</div>'; return; }
+  const st=s.state[side];
   entries.forEach(en=>{
-    const full=joinPath(s.state[side].path, en.name);
+    // '@drives' = màn danh sách ổ đĩa Windows, tên hàng đã là đường dẫn gốc (C:\\).
+    const full = st.path==='@drives' ? en.name : joinPath(st.path, en.name);
     const row=document.createElement('div'); row.className='drow'; row.draggable=true;
     const icon=en.type==='dir'?'📁':(en.type==='symlink'?'🔗':'📄');
     row.innerHTML=`<span class="n">${icon} ${esc(en.name)}</span><span class="s">${en.type==='dir'?'':fmtSize(en.size)}</span>`;
     row.addEventListener('dragstart',ev=>{
       ev.dataTransfer.effectAllowed='copy';
-      ev.dataTransfer.setData('text/plain', JSON.stringify({hostId:s.state[side].hostId, path:full, name:en.name, type:en.type}));
+      ev.dataTransfer.setData('text/plain', JSON.stringify({kind:st.kind, hostId:st.hostId, path:full, name:en.name, type:en.type}));
     });
     if(en.type==='dir'){
       row.onclick=()=>loadPane(id,side,full);
@@ -505,12 +516,19 @@ function renderPane(id, side, entries){
 async function doTransfer(id, side, e, destFolder){
   const s=sessions[id]; const dest=s.state[side];
   let p; try{ p=JSON.parse(e.dataTransfer.getData('text/plain')); }catch{ return; }
-  if(!dest.hostId){ dualStatus(id,'Chọn server cho khung đích trước.','err'); return; }
+  if(!dest.kind){ dualStatus(id,'Chọn nguồn cho khung đích trước.','err'); return; }
   const dstDir=destFolder||dest.path;
-  if(p.hostId===dest.hostId && p.path===joinPath(dstDir,p.name)){ dualStatus(id,'Nguồn và đích trùng nhau.','err'); return; }
+  if(dest.kind==='local' && dstDir==='@drives'){ dualStatus(id,'Mở một ổ đĩa/thư mục trước đã.','err'); return; }
+  if(p.kind===dest.kind && p.hostId===dest.hostId && p.path===joinPath(dstDir,p.name)){ dualStatus(id,'Nguồn và đích trùng nhau.','err'); return; }
   dualStatus(id,`⏳ Đang copy "${p.name}" → ${dstDir} …`);
   try{
-    const r=await http('POST','/sftp/transfer',{src_host_id:p.hostId, src_path:p.path, dst_host_id:dest.hostId, dst_dir:dstDir, name:p.name});
+    // máy này→máy này | server→máy này | máy này→server | server→server
+    const [ep, body] =
+      (dest.kind==='local' && p.kind==='local') ? ['/local/copy',     {src:p.path, dst_dir:dstDir, name:p.name}]
+    : (dest.kind==='local')                     ? ['/local/download', {host_id:p.hostId, src:p.path, dst_dir:dstDir, name:p.name}]
+    : (p.kind==='local')                        ? ['/local/upload',   {host_id:dest.hostId, src:p.path, dst_dir:dstDir, name:p.name}]
+    :                                             ['/sftp/transfer',  {src_host_id:p.hostId, src_path:p.path, dst_host_id:dest.hostId, dst_dir:dstDir, name:p.name}];
+    const r=await http('POST',ep,body);
     dualStatus(id,`✓ Đã copy "${p.name}" (${r.files} file, ${fmtSize(r.bytes)}) → ${r.dst}`,'ok');
     loadPane(id, side, dest.path);
   }catch(err){ dualStatus(id,'Lỗi copy: '+err.message,'err'); }

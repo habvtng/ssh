@@ -38,7 +38,9 @@ fn main() {
                 master_key,
                 jwt_secret,
             )?;
-            let router = ssh_web::build_api_router(state).fallback(serve_embedded);
+            // local_fs = true: backend chạy ngay trên máy người dùng nên màn 2 Server
+            // có thêm nguồn "💻 Máy này" để copy file/thư mục qua lại với server.
+            let router = ssh_web::build_api_router(state, true).fallback(serve_embedded);
 
             // Bind trước để biết port thật rồi mới mở cửa sổ trỏ vào đúng port đó.
             let addr = tauri::async_runtime::block_on(async move {
