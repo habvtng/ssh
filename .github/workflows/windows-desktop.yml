@@ -27,8 +27,13 @@ jobs:
       - name: Cài Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
+      # RUSTFLAGS đặt ngay tại step này (không đặt cấp job) vì bước `cargo install tauri-cli`
+      # ở trên build cho HOST — dính crt-static là hỏng proc-macro.
+      # Kèm --target tường minh thì RUSTFLAGS chỉ áp cho artifact đích, build script chạy host bình thường.
       - name: Build
         working-directory: desktop/src-tauri
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
         run: cargo tauri build --target x86_64-pc-windows-msvc
 
       # In danh sách DLL mà .exe phụ thuộc. Nếu crt-static có tác dụng thì KHÔNG được

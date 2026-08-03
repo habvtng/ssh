@@ -3,5 +3,10 @@
 # UCRT (KB2999226) sẽ báo "The program can't start because ... .dll is missing".
 # Chỉ có tác dụng khi build kèm `--target x86_64-pc-windows-msvc` (để build script
 # và proc-macro chạy trên host vẫn dùng CRT động, tránh lỗi biên dịch).
+#
+# LƯU Ý: file này chỉ được đọc khi gọi `cargo` TỪ thư mục này. `cargo tauri build`
+# chạy cargo từ chỗ khác nên bỏ qua nó — CI vì vậy đặt thẳng biến RUSTFLAGS
+# (xem .github/workflows/windows-desktop.yml). Đã kiểm chứng bằng dumpbin: thiếu
+# RUSTFLAGS thì binary vẫn import api-ms-win-crt-*.dll.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
